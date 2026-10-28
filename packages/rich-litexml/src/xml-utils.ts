@@ -62,16 +62,20 @@ function renderElement(el: XmlElement, indent: number, options: XmlRenderOptions
     return compact ? `<${el.tag}${attrs} />` : `${pad(indent)}<${el.tag}${attrs} />\n`;
   }
 
-  // Check if all children are inline (strings, CDATA, or inline elements)
-  const allInline = el.children.every(
+  // Check if any child is inline (strings, CDATA, or inline elements).
+  // Pretty-printing inserts newlines and indentation between children, which
+  // is only safe when every child is a block element; in mixed content those
+  // newlines would fuse into the surrounding text runs on deserialize.
+  const hasInline = el.children.some(
     (c) => typeof c === 'string' || isCdata(c) || isInlineElement(c),
   );
 
-  if (allInline) {
+  if (hasInline) {
     const inner = el.children
       .map((c) => {
         if (typeof c === 'string') return escapeXml(c);
         if (isCdata(c)) return renderCdata(c);
+        if (!isInlineElement(c)) return renderElement(c, indent + 1, options).trim();
         return renderInline(c);
       })
       .join('');
@@ -147,7 +151,6 @@ const INLINE_TAGS = new Set([
   'footnote',
   'comment',
   'br',
-  'img',
 ]);
 
 /** Tags rendered inline (no line break between siblings). */
@@ -156,6 +159,7 @@ export function isInlineTag(tag: string): boolean {
 }
 
 function isInlineElement(el: XmlElement): boolean {
+  if (el.tag === 'math' && el.attrs?.display === 'block') return false;
   return isInlineTag(el.tag);
 }
 

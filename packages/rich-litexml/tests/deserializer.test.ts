@@ -305,4 +305,44 @@ describe('formatting whitespace', () => {
       'world',
     ]);
   });
+
+  it('does not fuse layout indentation into inline text beside a nested list on roundtrip', () => {
+    for (const prefix of [
+      'Hello <b>world</b>：',
+      '  hello',
+      'hello\n',
+      '\nhello',
+      'Hello\n<b>world</b>',
+    ]) {
+      const input = `<doc><ul id="u1"><li id="l1">${prefix}<ul id="u2"><li id="l2">子项</li></ul></li></ul></doc>`;
+      const initial = deserializeFromXml(input, registry);
+      const first = serializeToXml(initial, registry, { compact: false });
+      const second = serializeToXml(deserializeFromXml(first, registry), registry, {
+        compact: false,
+      });
+      expect(first).toContain('\n        <li id="l2">子项</li>\n');
+      expect(second).toBe(first);
+      expect(deserializeFromXml(second, registry)).toEqual(initial);
+    }
+
+    const prettyPrinted = deserializeFromXml(
+      `<doc>
+  <ul id="u1">
+    <li id="l1">
+      Hello <b>world</b>：
+      <ul id="u2">
+        <li id="l2">子项</li>
+      </ul>
+    </li>
+  </ul>
+</doc>`,
+      registry,
+    );
+    expect(prettyPrinted).toEqual(
+      deserializeFromXml(
+        '<doc><ul id="u1"><li id="l1">Hello <b>world</b>：<ul id="u2"><li id="l2">子项</li></ul></li></ul></doc>',
+        registry,
+      ),
+    );
+  });
 });

@@ -141,20 +141,21 @@ function createReaderContext(registry: LitexmlRegistry): ReaderContext {
       // Treat any element holding a non-inline child as a block container so
       // that layout whitespace is dropped; a purely inline run keeps whatever
       // spacing it was written with.
-      const holdsBlockChild = [...element.children].some((child) => !isInlineTag(child.tagName));
-      const blockLevel = isBlockContainer(element) || holdsBlockChild;
+      const isBlockChild = (el: Element) =>
+        !isInlineTag(el.tagName) ||
+        (el.tagName.toLowerCase() === 'math' && el.getAttribute('display') === 'block');
+      const blockLevel = isBlockContainer(element) || [...element.children].some(isBlockChild);
       const nodes: SerializedLexicalNode[] = [];
       let pendingText = '';
-      const flushText = () => {
-        if (pendingText === '') return;
-        // Only skip whitespace-only text in block-level containers.
-        // In inline contexts, preserve all text including spaces.
-        if (blockLevel && pendingText.trim() === '') {
-          pendingText = '';
-          return;
-        }
-        nodes.push(makeTextNode(pendingText, 0));
+      let afterBlock = blockLevel;
+      const flushText = (beforeBlock: boolean) => {
+        // Strip layout indentation only at block boundaries.
+        let text = pendingText;
         pendingText = '';
+        if (afterBlock) text = text.replace(/^(?:\r?\n)+[\t ]+/, '');
+        if (beforeBlock) text = text.replace(/(?:\r?\n)+[\t ]+$/, '');
+        if (text === '' || ((afterBlock || beforeBlock) && text.trim() === '')) return;
+        nodes.push(makeTextNode(text, 0));
       };
       for (const child of element.childNodes) {
         if (child.nodeType === 3 /* TEXT_NODE */) {
@@ -163,8 +164,10 @@ function createReaderContext(registry: LitexmlRegistry): ReaderContext {
           // it), and Lexical expects a single text node per contiguous run.
           pendingText += child.textContent ?? '';
         } else if (child.nodeType === 1 /* ELEMENT_NODE */) {
-          flushText();
           const el = child as Element;
+          const isBlock = blockLevel && isBlockChild(el);
+          flushText(isBlock);
+          afterBlock = isBlock;
           const parsed = parseElement(el, registry, ctx, 0);
           if (parsed) {
             if (Array.isArray(parsed)) nodes.push(...parsed);
@@ -172,7 +175,7 @@ function createReaderContext(registry: LitexmlRegistry): ReaderContext {
           }
         }
       }
-      flushText();
+      flushText(blockLevel);
       return nodes;
     },
 
